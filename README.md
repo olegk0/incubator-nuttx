@@ -1,3 +1,29 @@
+# Support for Chinese board  FK743M2-IIT6
+
+## Specification
+
+* MCU STM32H743II
+* SDRAM W9825G6KH - 32Mb
+* QSPI Flash W25Q - 8Mb
+* SDMMC
+* 1 User LED
+* 24-bit RGB parallel interface
+
+
+## Hardware support
+
+* SDRAM - ok
+* QSPI - ok
+* LED - ok
+* SDMMC - not tested 
+* LCD AT070TN83 - ok
+* BackLight PWM - ok
+* Ethernet (Ext smsc8720a) - not done yet 
+* Resistive touch screen - not done yet 
+
+
+
+
 # APACHE NUTTX (INCUBATING)
 
 * Introduction

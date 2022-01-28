@@ -94,7 +94,7 @@
  * BOARD_FMC_SDTR[1..2] - Initial value for SDRAM timing registers for SDRAM
  *      bank 1-2. Note that some bits in SDTR1 influence both SDRAM banks and
  *      are unused in SDTR2!
- * BOARD_FMC_SDRAM_REFR_RATE_COUNT - The SDRAM refresh rate period in FMC clocks,
+ * BOARD_FMC_SDRAM_REFR_PERIOD - The SDRAM refresh rate period in FMC clocks,
  *      OR
  * BOARD_FMC_SDRAM_REFR_CYCLES and BOARD_FMC_SDRAM_REFR_PERIOD can be used to
  *      automatically compute refresh counter using data from SDRAM datasheet
@@ -182,6 +182,20 @@
 #  error "BOARD_FMC_CLK has unknown value!"
 #endif
 
+/* Compute the refresh rate in clocks */
+
+#ifndef BOARD_FMC_SDRAM_REFR_PERIOD
+
+#  if !defined(BOARD_FMC_SDRAM_REFR_CYCLES) || !defined(BOARD_FMC_SDRAM_REFR_PERIOD)
+#    error "Both BOARD_FMC_SDRAM_REFR_CYCLES and BOARD_FMC_SDRAM_REFR_PERIOD have to be defined to compute BOARD_FMC_SDRAM_REFR_PERIOD!"
+#  else
+     /* Take care not to overflow on 32-bit arithmetic */
+
+#    define BOARD_FMC_SDRAM_REFR_PERIOD        ((uint32_t)((uint64_t)BOARD_FMC_SDRAM_REFR_PERIOD * FMC_CLK_FREQUENCY / BOARD_FMC_SDRAM_REFR_CYCLES - 20))
+#  endif
+
+#endif /* BOARD_FMC_SDRAM_REFR_PERIOD */
+
 /* The bits in FMC_SDCR we will alter at initialization */
 
 #define FMC_SDCR_MASK           (FMC_SDCR_COLBITS_MASK | FMC_SDCR_ROWBITS_MASK | \
@@ -255,20 +269,11 @@ void stm32_fmc_init(void)
     stm32_configgpio(fmc_gpios[regval]);
 
   /* Set up FMC registers */
-  int SDRAM_clk_cfg = 0;
+
 #ifdef BOARD_FMC_SDCR1
   modreg32(BOARD_FMC_SDCR1, FMC_SDCR_MASK, STM32_FMC_SDCR1);
-  SDRAM_clk_cfg = (BOARD_FMC_SDCR1 & FMC_SDCR_SDCLK_MASK);
 #endif
 #ifdef BOARD_FMC_SDCR2
-
-/*TODO 
-SDCLK[1:0]:
-RBURST
-RPIPE[1:0]
-
-Note: The corresponding bits in the FMC_SDCR2 register is read only.
-*/
   modreg32(BOARD_FMC_SDCR2, FMC_SDCR_MASK, STM32_FMC_SDCR2);
 #endif
 
@@ -289,56 +294,32 @@ Note: The corresponding bits in the FMC_SDCR2 register is read only.
   stm32_fmc_sdram_init();
 #endif
 
-  uint32_t SDRAM_refr_rate_count;
-/* Compute the refresh rate in clocks */
-#ifdef BOARD_FMC_SDRAM_REFR_RATE_COUNT
-
-  SDRAM_refr_rate_count = BOARD_FMC_SDRAM_REFR_RATE_COUNT;
-
-#else
-
-#  if !defined(BOARD_FMC_SDRAM_REFR_CYCLES) || !defined(BOARD_FMC_SDRAM_REFR_PERIOD)
-#    error "Both BOARD_FMC_SDRAM_REFR_CYCLES and BOARD_FMC_SDRAM_REFR_PERIOD have to be defined to compute BOARD_FMC_SDRAM_REFR_PERIOD!"
-#  else
-
-  SDRAM_clk_cfg = SDRAM_clk_cfg >> FMC_SDCR_SDCLK_SHIFT;
-  if(SDRAM_clk_cfg){
-    SDRAM_refr_rate_count = ((BOARD_FMC_SDRAM_REFR_PERIOD * (FMC_CLK_FREQUENCY / 1000)) / BOARD_FMC_SDRAM_REFR_CYCLES) / SDRAM_clk_cfg - 20;
-  } else {
-    SDRAM_refr_rate_count = 0;
-  }
-
-#  endif
-
-#endif /* BOARD_FMC_SDRAM_REFR_RATE_COUNT */
-
-
   /* Set up SDRAM refresh timings */
 
-  if(SDRAM_refr_rate_count) {
-
+#ifdef BOARD_FMC_SDRAM_REFR_PERIOD
   /* ... The programmed COUNT value must not be equal to the sum of the
    * following timings: TWR+TRP+TRC+TRCD+4 memory clock cycles
    */
+
 #ifdef BOARD_FMC_SDTR1
-    DEBUGASSERT (SDRAM_refr_rate_count !=
-      (4 +
-       (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TWR_MASK) >> FMC_SDTR_TWR_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRP_MASK) >> FMC_SDTR_TRP_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRC_MASK) >> FMC_SDTR_TRC_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRCD_MASK) >> FMC_SDTR_TRCD_SHIFT))));
+  DEBUGASSERT (BOARD_FMC_SDRAM_REFR_PERIOD !=
+    (4 +
+     (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TWR_MASK) >> FMC_SDTR_TWR_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRP_MASK) >> FMC_SDTR_TRP_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRC_MASK) >> FMC_SDTR_TRC_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR1 & FMC_SDTR_TRCD_MASK) >> FMC_SDTR_TRCD_SHIFT))));
 #endif
 #ifdef BOARD_FMC_SDTR2
-    DEBUGASSERT (SDRAM_refr_rate_count !=
-      (4 +
-       (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TWR_MASK) >> FMC_SDTR_TWR_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRP_MASK) >> FMC_SDTR_TRP_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRC_MASK) >> FMC_SDTR_TRC_SHIFT)) +
-       (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRCD_MASK) >> FMC_SDTR_TRCD_SHIFT))));
+  DEBUGASSERT (BOARD_FMC_SDRAM_REFR_PERIOD !=
+    (4 +
+     (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TWR_MASK) >> FMC_SDTR_TWR_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRP_MASK) >> FMC_SDTR_TRP_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRC_MASK) >> FMC_SDTR_TRC_SHIFT)) +
+     (1 + ((BOARD_FMC_SDTR2 & FMC_SDTR_TRCD_MASK) >> FMC_SDTR_TRCD_SHIFT))));
 #endif
 
-    stm32_fmc_sdram_set_refresh_rate(SDRAM_refr_rate_count);
-  }
+  stm32_fmc_sdram_set_refresh_rate(BOARD_FMC_SDRAM_REFR_PERIOD);
+#endif /* BOARD_FMC_SDRTR */
 }
 
 #ifdef HAVE_FMC_SDRAM
