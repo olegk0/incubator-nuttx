@@ -2260,6 +2260,8 @@ static int sam_sendsetup(FAR struct sdio_dev_s *dev,
           /* Some fatal error has occurred */
 
           lcderr("ERROR: sr %08" PRIx32 "\n", sr);
+          leave_critical_section(flags);
+          sched_unlock();
           return -EIO;
         }
       else if ((sr & HSMCI_INT_TXRDY) != 0)
@@ -3116,6 +3118,7 @@ static void sam_callback(void *arg)
             {
               /* No... return without performing the callback */
 
+              leave_critical_section(flags);
               return;
             }
         }
@@ -3127,6 +3130,7 @@ static void sam_callback(void *arg)
             {
               /* No... return without performing the callback */
 
+              leave_critical_section(flags);
               return;
             }
         }
